@@ -1,0 +1,513 @@
+import pygame
+import random
+import os
+
+WIDTH = 415
+HEIGHT = 600
+FPS = 110
+
+BLACK = (0,0,0)
+WHITE = (255,255,255)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
+
+
+# 遊戲初始化
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("zombie escape")
+clock = pygame.time.Clock()
+
+
+# 載入圖片
+background_img = pygame.image.load(os.path.join("遊戲圖片", "background.png")).convert()  ## os.path代表此pygame資料夾，後面的意思是指從此資料夾的遊戲圖片這個資料夾中取出background.png，而.convert()會將此圖片轉為pygame較好讀取的格式
+player_anim = []
+for i in range(4):
+    player_img = pygame.image.load(os.path.join("遊戲圖片", f"player_up({i}).png")).convert()
+    player_img.set_colorkey(WHITE)
+    player_anim.append(pygame.transform.scale(player_img, (23, 52)))
+zombie1_anim = []
+for i in range(4):
+    zombie1_img = pygame.image.load(os.path.join("遊戲圖片", f"zombie_1({i}).png")).convert()
+    zombie1_img.set_colorkey(WHITE)
+    zombie1_anim.append(pygame.transform.scale(zombie1_img, (23, 47)))
+zombie2_anim = []
+for i in range(4):
+    zombie2_img = pygame.image.load(os.path.join("遊戲圖片", f"zombie_2({i}).png")).convert()
+    zombie2_img.set_colorkey(WHITE)
+    zombie2_anim.append(pygame.transform.scale(zombie2_img, (23, 47)))
+zombie3_anim = []
+for i in range(4):
+    zombie3_img = pygame.image.load(os.path.join("遊戲圖片", f"zombie_3({i}).png")).convert()
+    zombie3_img.set_colorkey(WHITE)
+    zombie3_anim.append(pygame.transform.scale(zombie3_img, (23, 47)))
+zombie4_anim = []
+for i in range(4):
+    zombie4_img = pygame.image.load(os.path.join("遊戲圖片", f"zombie_4({i}).png")).convert()
+    zombie4_img.set_colorkey(WHITE)
+    zombie4_anim.append(pygame.transform.scale(zombie4_img, (38, 55)))
+zombie5_anim = []
+for i in range(4):
+    zombie5_img = pygame.image.load(os.path.join("遊戲圖片", f"zombie_5({i}).png")).convert()
+    zombie5_img.set_colorkey(WHITE)
+    zombie5_anim.append(pygame.transform.scale(zombie5_img, (37, 63)))
+bullet_img = pygame.image.load(os.path.join("遊戲圖片", "bullet.png")).convert()
+bleed_anim = []
+for i in range(8):
+    bleed_img = pygame.image.load(os.path.join("遊戲圖片", f"bleed({i}).png")).convert()
+    bleed_img.set_colorkey(WHITE)
+    bleed_anim.append(pygame.transform.scale(bleed_img, (23, 25)))
+
+# 載入音效
+shoot_sound = pygame.mixer.Sound(os.path.join("遊戲音效", "shoot.mp3"))
+shoot_sound.set_volume(0.4)
+pygame.mixer.music.load(os.path.join("遊戲音效", "background.mp3"))
+pygame.mixer.music.set_volume(0.4) ## 將背景音樂的音量調為0.4(範圍為0~1)
+
+# 遊戲分數
+font_name = os.path.join("font.ttf")
+def draw_text(surf, text, size, x, y):
+    font = pygame.font.Font(font_name, size)
+    text_surface = font.render(text, True, BLACK)  ## 將文字渲染到畫面上
+    text_rect = text_surface.get_rect()
+    text_rect.centerx = x
+    text_rect.top = y
+    surf.blit(text_surface, text_rect)  ## 將文字畫出來
+
+# 加入生命條
+def draw_health(surf, hp, x, y):
+    if hp < 0:
+        hp = 0
+    BAR_LENGTH = 100
+    BAR_HEIGHT = 10
+    fill = (hp/100)*BAR_LENGTH  ## 現在的剩餘血量的長度
+    outline_rect = pygame.Rect(x, y, BAR_LENGTH, BAR_HEIGHT)  ## 生命條的外框(pygame.Rect()可以畫出矩形)
+    fill_rect = pygame.Rect(x, y, fill, BAR_HEIGHT)  ## 生命條的內部
+    pygame.draw.rect(surf, GREEN, fill_rect)  ## 將生命條內部畫上去
+    pygame.draw.rect(surf, WHITE, outline_rect, 2)  ## 將生命條外框畫上去(後面的參數"2"使程式只畫外框，不畫內部)
+
+def draw_init():
+    screen.blit(background_img, (0,0)) ## 將background_img這個圖片放置於screen上
+    draw_text(screen, 'Zombie Escape', 55, WIDTH/2, HEIGHT/4)
+    draw_text(screen, 'AD鍵移動角色 空白鍵發射子彈~', 22, WIDTH/2, HEIGHT/2)
+    draw_text(screen, 'P.S. 小殭屍血量及傷害較低，但速度較快，怪物則相反', 16, WIDTH/2, HEIGHT*5/8)
+    draw_text(screen, '按任意鍵開始遊戲!', 18, WIDTH/2, HEIGHT*3/4)
+    pygame.display.update()
+    waiting = True  ## 表示等待鍵盤被按下任意鍵的事件
+    while waiting:
+        clock.tick(FPS) ## 指此迴圈在一秒鐘之內只能被執行110次
+        # 取得輸入
+        for event in pygame.event.get(): ## 將遊戲內部的活動列表進行整理
+            if event.type == pygame.QUIT:  ## 判斷玩家是否要關閉遊戲
+                pygame.quit()
+                return True
+            elif event.type == pygame.KEYUP:  ## 判斷玩家是否按下鍵盤上的鍵(KEYDOWN是指玩家按下鍵盤鍵，KEYUP是指玩家按下鍵盤鍵後又鬆開)
+                waiting = False
+                return False
+
+# sprite，為pygame內建的類別
+
+class Screen(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = background_img
+        self.rect = self.image.get_rect()
+        self.rect.left = 0
+        self.rect.top = -1207/2
+        self.speedy = 4
+    
+    # 操控 sprite
+    def update(self):
+        self.rect.y += self.speedy
+        if self.rect.top > 0:
+            self.rect.left = 0
+            self.rect.top = -1207/2
+
+class Player(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = player_anim[0]  ## 傳入移動動畫的第一張圖片
+        self.rect = self.image.get_rect()  ## 定位sprite(把sprite框住定格)
+        self.rect.centerx = WIDTH / 2
+        self.rect.bottom = HEIGHT - 10
+        self.frame = 0  ## 紀錄更新至第幾張圖片
+        self.last_update = pygame.time.get_ticks()  ## 紀錄最後一次更新圖片的時間，pygame.time.get_ticks()會記錄從初始化到現在經過的毫秒數
+        self.frame_rate = 150  ## 代表至少經過幾毫秒才會更新至下一張圖片，用來控制動畫的速度(寫這行是因為直接把圖片更新寫在update會太快)
+        self.speedx = 6
+        self.health = 100
+    
+    # 操控 sprite
+    def update(self):
+        key_pressed = pygame.key.get_pressed()  ## 回傳在鍵盤上是否有按下按鍵的布林值
+        if key_pressed[pygame.K_d]:
+            self.rect.x += self.speedx
+        if key_pressed[pygame.K_a]:
+            self.rect.x -= self.speedx
+        
+        if self.rect.right > 380:
+            self.rect.right = 380
+        if self.rect.left < 35:
+            self.rect.left = 35
+    
+    def anim(self):
+        now = pygame.time.get_ticks()  ## 代表移動被執行的時間
+        if now - self.last_update > self.frame_rate:  ## 判斷執行時間與上次移動時間是否有相差50毫秒
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(player_anim):
+                self.frame = 0
+                self.image = player_anim[self.frame]
+                self.rect.x = self.rect.x
+                self.rect.bottom = HEIGHT - 10
+            else:
+                self.image = player_anim[self.frame]  ## 如果圖片不是動畫的最後一張，就更新一張，並重新定位
+                self.rect.x = self.rect.x
+                self.rect.bottom = HEIGHT - 10
+    
+    def shoot(self):
+        bullet = Bullet(self.rect.centerx, self.rect.top)
+        all_sprites.add(bullet)
+        bullets.add(bullet)
+        shoot_sound.play()
+
+
+class Zombie1(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = zombie1_anim[0]  ## 傳入移動動畫的第一張圖片
+        self.rect = self.image.get_rect()  ## 定位sprite(把sprite框住定格)
+        self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+        self.rect.y = random.randrange(-180, -100)
+        self.speedy = random.randrange(4, 6)
+        self.speedx = random.randrange(-2, 2)
+        self.frame = 0  ## 紀錄更新至第幾張圖片
+        self.last_update = pygame.time.get_ticks()  ## 紀錄最後一次更新圖片的時間，pygame.time.get_ticks()會記錄從初始化到現在經過的毫秒數
+        self.frame_rate = 250  ## 代表至少經過幾毫秒才會更新至下一張圖片，用來控制動畫的速度(寫這行是因為直接把圖片更新寫在update會太快)
+        self.health = 60
+
+    def update(self):
+        self.rect.y += self.speedy
+        self.rect.x += self.speedx
+        if self.rect.top > HEIGHT:
+            self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+            self.rect.y = random.randrange(-180, -100)
+            self.speedy = random.randrange(4, 6)
+            self.speedx = random.randrange(-2, 2)
+            self.health = 60
+        if self.rect.x > 380 - self.rect.width or self.rect.x < 35:
+            self.speedx = self.speedx * -1
+
+    def anim(self):
+        now = pygame.time.get_ticks()  ## 代表移動被執行的時間
+        if now - self.last_update > self.frame_rate:  ## 判斷執行時間與上次移動時間是否有相差250毫秒
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(zombie1_anim):
+                self.frame = 0
+                self.image = zombie1_anim[self.frame]
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+            else:
+                self.image = zombie1_anim[self.frame]  ## 如果圖片不是動畫的最後一張，就更新一張，並重新定位
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+
+class Zombie2(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = zombie2_anim[0]  ## 傳入移動動畫的第一張圖片
+        self.rect = self.image.get_rect()  ## 定位sprite(把sprite框住定格)
+        self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+        self.rect.y = random.randrange(-180, -100)
+        self.speedy = random.randrange(4, 6)
+        self.speedx = random.randrange(-2, 2)
+        self.frame = 0  ## 紀錄更新至第幾張圖片
+        self.last_update = pygame.time.get_ticks()  ## 紀錄最後一次更新圖片的時間，pygame.time.get_ticks()會記錄從初始化到現在經過的毫秒數
+        self.frame_rate = 250  ## 代表至少經過幾毫秒才會更新至下一張圖片，用來控制動畫的速度(寫這行是因為直接把圖片更新寫在update會太快)
+        self.health = 60
+
+    def update(self):
+        self.rect.y += self.speedy
+        self.rect.x += self.speedx
+        if self.rect.top > HEIGHT:
+            self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+            self.rect.y = random.randrange(-180, -100)
+            self.speedy = random.randrange(4, 6)
+            self.speedx = random.randrange(-2, 2)
+            self.health = 60
+        if self.rect.x > 380 - self.rect.width or self.rect.x < 35:
+            self.speedx = self.speedx * -1
+
+    def anim(self):
+        now = pygame.time.get_ticks()  ## 代表移動被執行的時間
+        if now - self.last_update > self.frame_rate:  ## 判斷執行時間與上次移動時間是否有相差250毫秒
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(zombie2_anim):
+                self.frame = 0
+                self.image = zombie2_anim[self.frame]
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+            else:
+                self.image = zombie2_anim[self.frame]  ## 如果圖片不是動畫的最後一張，就更新一張，並重新定位
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+
+class Zombie3(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = zombie3_anim[0]  ## 傳入移動動畫的第一張圖片
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+        self.rect.y = random.randrange(-180, -100)
+        self.speedy = random.randrange(4, 6)
+        self.frame = 0  ## 紀錄更新至第幾張圖片
+        self.last_update = pygame.time.get_ticks()  ## 紀錄最後一次更新圖片的時間，pygame.time.get_ticks()會記錄從初始化到現在經過的毫秒數
+        self.frame_rate = 250  ## 代表至少經過幾毫秒才會更新至下一張圖片，用來控制動畫的速度(寫這行是因為直接把圖片更新寫在update會太快)
+        self.health = 60
+
+    def update(self):
+        self.rect.y += self.speedy
+        if self.rect.top > HEIGHT:
+            self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+            self.rect.y = random.randrange(-180, -100)
+            self.speedy = random.randrange(4, 6)
+            self.health = 60
+
+    def anim(self):
+        now = pygame.time.get_ticks()  ## 代表移動被執行的時間
+        if now - self.last_update > self.frame_rate:  ## 判斷執行時間與上次移動時間是否有相差250毫秒
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(zombie3_anim):
+                self.frame = 0
+                self.image = zombie3_anim[self.frame]
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+            else:
+                self.image = zombie3_anim[self.frame]  ## 如果圖片不是動畫的最後一張，就更新一張，並重新定位
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+
+class Zombie4(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = zombie4_anim[0]  ## 傳入移動動畫的第一張圖片
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+        self.rect.y = random.randrange(-180, -100)
+        self.speedy = random.randrange(3, 4)
+        self.frame = 0  ## 紀錄更新至第幾張圖片
+        self.last_update = pygame.time.get_ticks()  ## 紀錄最後一次更新圖片的時間，pygame.time.get_ticks()會記錄從初始化到現在經過的毫秒數
+        self.frame_rate = 250  ## 代表至少經過幾毫秒才會更新至下一張圖片，用來控制動畫的速度(寫這行是因為直接把圖片更新寫在update會太快)
+        self.health = 90
+
+    def update(self):
+        self.rect.y += self.speedy
+        if self.rect.top > HEIGHT:
+            self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+            self.rect.y = random.randrange(-180, -100)
+            self.speedy = random.randrange(3, 4)
+            self.health = 90
+
+    def anim(self):
+        now = pygame.time.get_ticks()  ## 代表移動被執行的時間
+        if now - self.last_update > self.frame_rate:  ## 判斷執行時間與上次移動時間是否有相差250毫秒
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(zombie4_anim):
+                self.frame = 0
+                self.image = zombie4_anim[self.frame]
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+            else:
+                self.image = zombie4_anim[self.frame]  ## 如果圖片不是動畫的最後一張，就更新一張，並重新定位
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+
+class Zombie5(pygame.sprite.Sprite):
+    def __init__(self): 
+        pygame.sprite.Sprite.__init__(self)
+        self.image = zombie5_anim[0]  ## 傳入移動動畫的第一張圖片
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+        self.rect.y = random.randrange(-180, -100)
+        self.speedy = random.randrange(3, 4)
+        self.frame = 0  ## 紀錄更新至第幾張圖片
+        self.last_update = pygame.time.get_ticks()  ## 紀錄最後一次更新圖片的時間，pygame.time.get_ticks()會記錄從初始化到現在經過的毫秒數
+        self.frame_rate = 250  ## 代表至少經過幾毫秒才會更新至下一張圖片，用來控制動畫的速度(寫這行是因為直接把圖片更新寫在update會太快)
+        self.health = 90
+
+    def update(self):
+        self.rect.y += self.speedy
+        if self.rect.top > HEIGHT:
+            self.rect.x = random.randrange(35, 380 - self.rect.width)  ## 輸入二數，隨機回傳此二數之間的任一數
+            self.rect.y = random.randrange(-180, -100)
+            self.speedy = random.randrange(3, 4)
+            self.health = 90
+
+    def anim(self):
+        now = pygame.time.get_ticks()  ## 代表移動被執行的時間
+        if now - self.last_update > self.frame_rate:  ## 判斷執行時間與上次移動時間是否有相差250毫秒
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(zombie5_anim):
+                self.frame = 0
+                self.image = zombie5_anim[self.frame]
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+            else:
+                self.image = zombie5_anim[self.frame]  ## 如果圖片不是動畫的最後一張，就更新一張，並重新定位
+                self.rect.x = self.rect.x
+                self.rect.y = self.rect.y
+
+
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)  ## 初始化sprite
+        self.image = pygame.transform.scale(bullet_img, (12, 15))
+        self.image.set_colorkey(WHITE)
+        self.rect = self.image.get_rect()  ## 定位sprite(把sprite框住定格)
+        self.rect.centerx = x
+        self.rect.bottom = y
+        self.speedy = -15
+
+    # 子彈 sprite
+    def update(self):
+        self.rect.y += self.speedy
+        if self.rect.bottom < 0:
+            self.kill()  ## 移除子彈 sprite
+
+pygame.mixer.music.play(-1) ## 無限重複播放背景音樂(括號內的參數為播放幾次，-1指無限播放)
+
+# 遊戲迴圈
+show_init = True
+running = True
+while running:
+
+    if show_init:
+        close = draw_init()
+        if close:
+            break
+        show_init = False
+        all_sprites = pygame.sprite.Group()  ## 建立一個sprite群組
+        sc = Screen()
+        all_sprites.add(sc)
+        player = Player()
+        all_sprites.add(player)  ## 把player這個sprite拉進群組
+        bullets = pygame.sprite.Group()
+        z1 = Zombie1()
+        z2 = Zombie2()
+        z3 = Zombie3()
+        z4 = Zombie4()
+        z5 = Zombie5()
+        all_sprites.add(z1)
+        all_sprites.add(z2)
+        all_sprites.add(z3)
+        all_sprites.add(z4)
+        all_sprites.add(z5)
+        score = 0
+    clock.tick(FPS)
+
+    # 取得輸入
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.KEYDOWN:  ## 判斷玩家是否按下鍵盤上的鍵
+            if event.key == pygame.K_SPACE:
+                player.shoot()
+
+
+    # 更新遊戲
+    all_sprites.update()
+    score += 1
+    ## 判斷殭屍 & 子彈相撞
+    hits = pygame.sprite.spritecollide(z1, bullets, True)
+    for hit in hits:
+        z1.health -= 30
+        if z1.health <= 0:
+            z1.kill()
+            z1 = Zombie1()
+            all_sprites.add(z1)
+            score += 200
+    hits = pygame.sprite.spritecollide(z2, bullets, True)
+    for hit in hits:
+        z2.health -= 30
+        if z2.health <= 0:
+            z2.kill()
+            z2 = Zombie2()
+            all_sprites.add(z2)
+            score += 200
+    hits = pygame.sprite.spritecollide(z3, bullets, True)
+    for hit in hits:
+        z3.health -= 30
+        if z3.health <= 0:
+            z3.kill()
+            z3 = Zombie3()
+            all_sprites.add(z3)
+            score += 200
+    hits = pygame.sprite.spritecollide(z4, bullets, True)
+    for hit in hits:
+        z4.health -= 30
+        if z4.health <= 0:
+            z4.kill()
+            z4 = Zombie4()
+            all_sprites.add(z4)
+            score += 500
+    hits = pygame.sprite.spritecollide(z5, bullets, True)
+    for hit in hits:
+        z5.health -= 30
+        if z5.health <= 0:
+            z5.kill()
+            z5 = Zombie5()
+            all_sprites.add(z5)
+            score += 500
+    ## 判斷殭屍 & 玩家相撞
+    hits = pygame.sprite.collide_rect(player, z1)
+    if hits == True:
+        player.health -= 30
+        z1.kill()
+        z1 = Zombie1()
+        all_sprites.add(z1)
+    hits = pygame.sprite.collide_rect(player, z2)
+    if hits == True:
+        player.health -= 30
+        z2.kill()
+        z2 = Zombie2()
+        all_sprites.add(z2)
+    hits = pygame.sprite.collide_rect(player, z3)
+    if hits == True:
+        player.health -= 30
+        z3.kill()
+        z3 = Zombie3()
+        all_sprites.add(z3)
+    hits = pygame.sprite.collide_rect(player, z4)
+    if hits == True:
+        player.health -= 50
+        z4.kill()
+        z4 = Zombie4()
+        all_sprites.add(z4)
+    hits = pygame.sprite.collide_rect(player, z5)
+    if hits == True:
+        player.health -= 50
+        z5.kill()
+        z5 = Zombie5()
+        all_sprites.add(z5)
+    if player.health <= 0:  
+        show_init = True
+    
+    # 畫面顯示
+    screen.fill(WHITE)
+    all_sprites.draw(screen)
+    player.anim()
+    z1.anim()
+    z2.anim()
+    z3.anim()
+    z4.anim()
+    z5.anim()
+    draw_text(screen, str(score), 18, WIDTH/2, 10)
+    draw_health(screen, player.health, 5, 15)
+    pygame.display.update()
+
+pygame.quit()
